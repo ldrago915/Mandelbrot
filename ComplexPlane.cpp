@@ -73,24 +73,33 @@ void ComplexPlane::loadText(Text& text)
 }
 void ComplexPlane::updateRender()
 {
-	Vector2i inCoord;
-	Vector2f compCoord;
-	size_t itCount;
-	Uint8 r, g, b;
+
 	if (m_state == State::CALCULATING)
 	{
-		for (int i = 0; i < m_pixel_size.y; i++)
+		//Create vector for threads and determine how many rows per
+		int numThreads = 4;
+		vector<thread> threads;
+		int rowsPerThread = m_pixel_size.y / numThreads;
+		int endRow;
+		//Begin threads
+		for (int t = 0; t < numThreads; t++)
 		{
-			for (int j = 0; j < m_pixel_size.x; j++)
-			{
-				m_vArray[j + i * m_pixel_size.x].position = { (float)j, (float)i };
-				inCoord = { j , i };
-				compCoord = ComplexPlane::mapPixelToCoords(inCoord);
-				itCount = ComplexPlane::countIterations(compCoord);
-				ComplexPlane::iterationsToRGB(itCount, r, g, b);
-				m_vArray[j + i * m_pixel_size.x].color = { r,g,b };
-			}
+			int startRow = t * rowsPerThread;
+			//Catch potential extra row
+			if (t == numThreads - 1)
+				endRow = m_pixel_size.y;
+			else
+				endRow = startRow + rowsPerThread;
+
+			threads.push_back(thread(&ComplexPlane::threadRender, this, startRow, endRow));
+
 		}
+		//Wait for all to finish
+		for (auto& thread : threads)
+		{
+			thread.join();
+		}
+
 		cout << "render complete\n";
 		m_state = State::DISPLAYING;
 	}
@@ -139,4 +148,25 @@ Vector2f ComplexPlane::mapPixelToCoords(Vector2i mousePixel)
 	float yRatio = float(mousePixel.y) / m_pixel_size.y;
 	pCoords.y = (m_plane_center.y + m_plane_size.y / 2.0f) - (yRatio * m_plane_size.y);
 	return pCoords;
+}
+
+void ComplexPlane::threadRender(int startRow, int endRow)
+{
+	Vector2i inCoord;
+	Vector2f compCoord;
+	size_t itCount;
+	Uint8 r, g, b;
+
+	for (int i = startRow; i < endRow; i++)
+	{
+		for (int j = 0; j < m_pixel_size.x; j++)
+		{
+			m_vArray[j + i * m_pixel_size.x].position = { (float)j, (float)i };
+			inCoord = { j , i };
+			compCoord = ComplexPlane::mapPixelToCoords(inCoord);
+			itCount = ComplexPlane::countIterations(compCoord);
+			ComplexPlane::iterationsToRGB(itCount, r, g, b);
+			m_vArray[j + i * m_pixel_size.x].color = { r,g,b };
+		}
+	}
 }
